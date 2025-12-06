@@ -215,6 +215,49 @@ class VIP_User_Order {
                     <button type="submit" name="vip_user_order_save" class="button button-primary">সেভ করুন</button>
                 </p>
             </form>
+            
+            <hr style="margin: 40px 0;">
+            
+            <h2>ফোন নাম্বার টেস্ট করুন</h2>
+            <p>কোনো ফোন নাম্বার দিয়ে চেক করুন কতগুলো অর্ডার পাওয়া যাচ্ছে</p>
+            
+            <form method="get" action="" style="margin: 20px 0;">
+                <input type="hidden" name="page" value="vip-user-order">
+                <input type="text" name="test_phone" placeholder="ফোন নাম্বার লিখুন" value="<?php echo isset($_GET['test_phone']) ? esc_attr($_GET['test_phone']) : ''; ?>" style="width: 300px;">
+                <button type="submit" class="button">টেস্ট করুন</button>
+            </form>
+            
+            <?php
+            if (isset($_GET['test_phone']) && !empty($_GET['test_phone'])) {
+                $test_phone = sanitize_text_field($_GET['test_phone']);
+                $cleaned = $this->clean_phone_number($test_phone);
+                $count = $this->count_orders_by_phone($test_phone);
+                $tag = $this->get_tag_for_order_count($count);
+                
+                echo '<div style="background: #f0f0f1; padding: 20px; border-radius: 5px;">';
+                echo '<h3>টেস্ট রেজাল্ট:</h3>';
+                echo '<p><strong>মূল নাম্বার:</strong> ' . esc_html($test_phone) . '</p>';
+                echo '<p><strong>ক্লিন নাম্বার:</strong> ' . esc_html($cleaned) . '</p>';
+                echo '<p><strong>পাওয়া অর্ডার:</strong> ' . esc_html($count) . 'টি</p>';
+                
+                if ($tag) {
+                    echo '<p><strong>ট্যাগ:</strong> ';
+                    echo sprintf(
+                        '<span class="vip-customer-tag" style="background-color: %s; color: #fff; padding: 6px 12px; border-radius: 3px; font-size: 12px; font-weight: 600; display: inline-block;">%s</span>',
+                        esc_attr($tag['color']),
+                        esc_html($tag['label'])
+                    );
+                    echo '</p>';
+                } else {
+                    echo '<p style="color: #d63638;"><strong>কোনো ট্যাগ পাওয়া যায়নি</strong></p>';
+                }
+                
+                // Show matching orders
+                $this->debug_phone_matching($test_phone);
+                
+                echo '</div>';
+            }
+            ?>
         </div>
         
         <script>
@@ -343,11 +386,17 @@ class VIP_User_Order {
         }
         
         $phone = $this->clean_phone_number($billing_phone);
-        $order_count = $this->count_orders_by_phone($phone);
+        $order_count = $this->count_orders_by_phone($billing_phone);
         $tag = $this->get_tag_for_order_count($order_count);
         
         echo '<div style="padding: 10px;">';
         echo '<p><strong>ফোন নাম্বার:</strong> ' . esc_html($billing_phone) . '</p>';
+        
+        // Debug info
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            echo '<p style="font-size: 11px; color: #666;"><em>Cleaned: ' . esc_html($phone) . '</em></p>';
+        }
+        
         echo '<p><strong>মোট অর্ডার:</strong> ' . esc_html($order_count) . 'টি</p>';
         
         if ($tag) {
@@ -432,12 +481,29 @@ class VIP_User_Order {
      * Clean phone number
      */
     private function clean_phone_number($phone) {
+        if (empty($phone)) {
+            return '';
+        }
+        
+        // Convert Bengali numbers to English
+        $bengali_numbers = array('০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯');
+        $english_numbers = array('0', '1', '2', '3', '4', '5', '6', '7', '8', '9');
+        $phone = str_replace($bengali_numbers, $english_numbers, $phone);
+        
         // Remove all non-numeric characters
         $phone = preg_replace('/[^0-9]/', '', $phone);
         
-        // Remove leading country code if present
-        if (strlen($phone) > 11 && substr($phone, 0, 2) === '88') {
-            $phone = substr($phone, 2);
+        // Remove leading country code if present (88 for Bangladesh)
+        if (strlen($phone) > 11) {
+            // Remove multiple 88 prefixes if any
+            while (strlen($phone) > 11 && substr($phone, 0, 2) === '88') {
+                $phone = substr($phone, 2);
+            }
+        }
+        
+        // Ensure we have at least the last 10 digits (mobile number)
+        if (strlen($phone) > 11) {
+            $phone = substr($phone, -11);
         }
         
         return $phone;
@@ -453,33 +519,55 @@ class VIP_User_Order {
             return 0;
         }
         
+        // Get all orders with billing phone
+        $orders = array();
+        
         // Check if HPOS is enabled
         if (class_exists('Automattic\WooCommerce\Utilities\OrderUtil') && 
             \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled()) {
             
-            // HPOS query - check for completed, processing, on-hold orders
-            $count = $wpdb->get_var($wpdb->prepare(
-                "SELECT COUNT(DISTINCT o.id) 
+            // HPOS query - get all phone numbers
+            $results = $wpdb->get_results(
+                "SELECT DISTINCT o.id, om.meta_value as phone
                 FROM {$wpdb->prefix}wc_orders o
                 INNER JOIN {$wpdb->prefix}wc_orders_meta om ON o.id = om.order_id
                 WHERE om.meta_key = '_billing_phone'
-                AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(om.meta_value, ' ', ''), '-', ''), '+88', ''), '+', ''), '০', '0') LIKE %s
                 AND o.type = 'shop_order'
-                AND o.status IN ('wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending')",
-                '%' . $wpdb->esc_like($phone) . '%'
-            ));
+                AND o.status IN ('wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending')
+                AND om.meta_value IS NOT NULL
+                AND om.meta_value != ''"
+            );
         } else {
-            // Classic orders query
-            $count = $wpdb->get_var($wpdb->prepare(
-                "SELECT COUNT(DISTINCT p.ID) 
+            // Classic orders query - get all phone numbers
+            $results = $wpdb->get_results(
+                "SELECT DISTINCT p.ID as id, pm.meta_value as phone
                 FROM {$wpdb->posts} p
                 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
                 WHERE p.post_type = 'shop_order'
                 AND p.post_status IN ('wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending')
                 AND pm.meta_key = '_billing_phone'
-                AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(pm.meta_value, ' ', ''), '-', ''), '+88', ''), '+', ''), '০', '0') LIKE %s",
-                '%' . $wpdb->esc_like($phone) . '%'
-            ));
+                AND pm.meta_value IS NOT NULL
+                AND pm.meta_value != ''"
+            );
+        }
+        
+        // Count matching phone numbers
+        $count = 0;
+        $cleaned_target = $this->clean_phone_number($phone);
+        
+        if (!empty($results)) {
+            foreach ($results as $result) {
+                $cleaned_result = $this->clean_phone_number($result->phone);
+                
+                // Match if cleaned numbers are the same
+                // Or if one contains the other (for partial matches)
+                if ($cleaned_result === $cleaned_target || 
+                    (!empty($cleaned_result) && !empty($cleaned_target) && 
+                     (strpos($cleaned_result, $cleaned_target) !== false || 
+                      strpos($cleaned_target, $cleaned_result) !== false))) {
+                    $count++;
+                }
+            }
         }
         
         return intval($count);
@@ -506,6 +594,53 @@ class VIP_User_Order {
     public function recalculate_customer_tags($order_id, $old_status, $new_status) {
         // This hook ensures tags are updated when order status changes
         // The actual calculation happens on display, so no action needed here
+    }
+    
+    /**
+     * Debug function to check phone matching (for admin only)
+     */
+    public function debug_phone_matching($phone) {
+        if (!current_user_can('manage_woocommerce')) {
+            return;
+        }
+        
+        global $wpdb;
+        
+        echo '<div style="background: #fff; padding: 15px; margin: 20px 0; border: 1px solid #ccc;">';
+        echo '<h3>Debug Info for: ' . esc_html($phone) . '</h3>';
+        echo '<p><strong>Cleaned:</strong> ' . esc_html($this->clean_phone_number($phone)) . '</p>';
+        
+        // Get all phone numbers from orders
+        if (class_exists('Automattic\\WooCommerce\\Utilities\\OrderUtil') && 
+            \\Automattic\\WooCommerce\\Utilities\\OrderUtil::custom_orders_table_usage_is_enabled()) {
+            $results = $wpdb->get_results(
+                "SELECT o.id, om.meta_value as phone, o.status
+                FROM {$wpdb->prefix}wc_orders o
+                INNER JOIN {$wpdb->prefix}wc_orders_meta om ON o.id = om.order_id
+                WHERE om.meta_key = '_billing_phone'
+                AND o.type = 'shop_order'
+                ORDER BY o.id DESC
+                LIMIT 20"
+            );
+        } else {
+            $results = $wpdb->get_results(
+                "SELECT p.ID as id, pm.meta_value as phone, p.post_status as status
+                FROM {$wpdb->posts} p
+                INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+                WHERE p.post_type = 'shop_order'
+                AND pm.meta_key = '_billing_phone'
+                ORDER BY p.ID DESC
+                LIMIT 20"
+            );
+        }
+        
+        echo '<h4>Recent Orders:</h4><ul>';
+        foreach ($results as $result) {
+            $cleaned = $this->clean_phone_number($result->phone);
+            $match = ($cleaned === $this->clean_phone_number($phone)) ? '✓ MATCH' : '';
+            echo '<li>Order #' . $result->id . ': ' . esc_html($result->phone) . ' → ' . esc_html($cleaned) . ' ' . $match . '</li>';
+        }
+        echo '</ul></div>';
     }
     
     /**
