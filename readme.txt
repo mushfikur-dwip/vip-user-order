@@ -1,76 +1,103 @@
 === VIP User Order ===
 Contributors: yourusername
-Tags: woocommerce, customer, orders, vip, tags
+Tags: woocommerce, customer, orders, vip, tags, bangladesh
 Requires at least: 5.0
 Tested up to: 6.4
 Requires PHP: 7.2
-Stable tag: 1.0.0
+Stable tag: 1.0.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-একই ফোন নাম্বার থেকে অর্ডারের সংখ্যা অনুযায়ী কাস্টমার ট্যাগ প্রদর্শন করে।
+Display customer tags based on order count from the same phone number. Perfect for Bangladesh phone formats.
 
 == Description ==
 
-VIP User Order প্লাগিন আপনার WooCommerce স্টোরে কাস্টমার লয়্যালটি ট্র্যাক করতে সাহায্য করে। এটি একই ফোন নাম্বার থেকে করা অর্ডারের সংখ্যা গণনা করে এবং স্বয়ংক্রিয়ভাবে কাস্টমার ট্যাগ প্রদর্শন করে।
+VIP User Order plugin helps you track customer loyalty in your WooCommerce store. It automatically identifies returning customers by their phone number and displays customizable tags on orders.
 
-= বৈশিষ্ট্যসমূহ =
+= Features =
 
-* একই ফোন নাম্বার দিয়ে অর্ডার ট্র্যাকিং
-* কাস্টমাইজযোগ্য ট্যাগ সিস্টেম
-* অর্ডার লিস্টে ট্যাগ প্রদর্শন
-* সহজ সেটিংস ইন্টারফেস
-* HPOS (High-Performance Order Storage) সাপোর্ট
-* বাংলা ইন্টারফেস
+* Track orders by phone number (supports +880 and 01 formats)
+* Customizable customer tags
+* Display tags in order list
+* Bangladesh phone number format support (+8801XXXXXXXXX or 01XXXXXXXXX)
+* HPOS (High-Performance Order Storage) compatible
+* Built-in caching for performance
+* Easy-to-use settings interface
+* Test tool to verify phone number matching
 
-= কীভাবে ব্যবহার করবেন =
+= Supported Phone Formats =
 
-1. প্লাগিন ইনস্টল এবং অ্যাক্টিভেট করুন
-2. WooCommerce > VIP User Tags এ যান
-3. আপনার পছন্দমতো ট্যাগ কনফিগার করুন
-4. অর্ডার লিস্টে কাস্টমার ট্যাগ দেখুন
+* +8801712345678 (with country code)
+* 8801712345678 (without + sign)
+* 01712345678 (local format)
+* Automatically normalizes all formats to 01XXXXXXXXX
 
-= ডিফল্ট ট্যাগ =
+= Default Tags =
 
-* নতুন কাস্টমার (১টি অর্ডার)
-* রিপিট কাস্টমার (২টি অর্ডার)
-* লয়াল কাস্টমার (৩-৫টি অর্ডার)
-* ভিআইপি কাস্টমার (৬+ অর্ডার)
+* New Customer (1 order) - Blue
+* Repeat Customer (2 orders) - Orange  
+* Loyal Customer (3-5 orders) - Green
+* VIP Customer (6+ orders) - Purple
+
+You can customize all tags including colors and order ranges!
 
 == Installation ==
 
-1. প্লাগিন ফোল্ডারটি `/wp-content/plugins/` ডিরেক্টরিতে আপলোড করুন
-2. WordPress এর 'Plugins' মেনু থেকে প্লাগিনটি অ্যাক্টিভেট করুন
-3. WooCommerce > VIP User Tags এ গিয়ে সেটিংস কনফিগার করুন
+1. Upload the plugin folder to `/wp-content/plugins/` directory
+2. Activate the plugin through the 'Plugins' menu in WordPress
+3. Go to WooCommerce > VIP User Tags to configure settings
+4. Done! Tags will appear automatically in your order list
 
 == Frequently Asked Questions ==
 
-= কি WooCommerce প্রয়োজন? =
+= Does this require WooCommerce? =
 
-হ্যাঁ, এই প্লাগিনটি চালানোর জন্য WooCommerce প্রয়োজন।
+Yes, WooCommerce must be installed and activated for this plugin to work.
 
-= কি HPOS সাপোর্ট করে? =
+= Does it support HPOS? =
 
-হ্যাঁ, এই প্লাগিন WooCommerce এর নতুন High-Performance Order Storage সিস্টেম সাপোর্ট করে।
+Yes! The plugin fully supports WooCommerce's new High-Performance Order Storage system.
 
-= আমি কি নিজের ট্যাগ যোগ করতে পারি? =
+= Can I add my own custom tags? =
 
-হ্যাঁ, আপনি যতগুলো ইচ্ছা ততগুলো কাস্টম ট্যাগ যোগ করতে পারেন।
+Yes! You can add unlimited custom tags with your own labels, colors, and order count ranges.
 
-== Screenshots ==
+= What phone formats are supported? =
 
-1. সেটিংস পেজ
-2. অর্ডার লিস্টে কাস্টমার ট্যাগ
+The plugin supports Bangladesh phone formats:
+- +8801XXXXXXXXX (13 digits with country code)
+- 01XXXXXXXXX (11 digits local format)
+All formats are automatically normalized for matching.
+
+= How does it count orders? =
+
+The plugin counts all orders with the following statuses:
+- Completed
+- Processing  
+- On-Hold
+- Pending
+
+Orders with other statuses (cancelled, refunded, etc.) are not counted.
+
+= Is it performance optimized? =
+
+Yes! The plugin uses caching to minimize database queries. Results are cached for 5 minutes.
 
 == Changelog ==
 
+= 1.0.2 =
+* Fixed website breaking syntax errors
+* Converted all text to English
+* Improved Bangladesh phone format handling
+* Added better error handling
+* Added performance caching
+* Improved HPOS compatibility
+* Fixed phone number normalization
+
 = 1.0.0 =
-* প্রাথমিক রিলিজ
-* কাস্টমার ট্যাগিং সিস্টেম
-* অর্ডার কাউন্ট ফিচার
-* HPOS সাপোর্ট
+* Initial release
 
 == Upgrade Notice ==
 
-= 1.0.0 =
-প্রাথমিক রিলিজ
+= 1.0.2 =
+Critical update: Fixes website breaking errors. Update immediately.
