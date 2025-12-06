@@ -63,6 +63,15 @@ class VIP_User_Order {
         add_action('manage_shop_order_posts_custom_column', array($this, 'display_customer_tag_column'), 20, 2);
         add_action('manage_woocommerce_page_wc-orders_custom_column', array($this, 'display_customer_tag_column_hpos'), 20, 2);
         
+        // Make column sortable (optional)
+        add_filter('manage_edit-shop_order_sortable_columns', array($this, 'make_customer_tag_sortable'));
+        
+        // Add meta box to order edit page
+        add_action('add_meta_boxes', array($this, 'add_order_meta_box'));
+        
+        // For HPOS order edit page
+        add_action('woocommerce_admin_order_data_after_billing_address', array($this, 'display_customer_tag_on_order_page'), 10, 1);
+        
         // Enqueue styles
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_styles'));
         
@@ -239,11 +248,29 @@ class VIP_User_Order {
         $new_columns = array();
         foreach ($columns as $key => $value) {
             $new_columns[$key] = $value;
+            // Add after order_status column
             if ($key === 'order_status') {
                 $new_columns['customer_tag'] = 'কাস্টমার ট্যাগ';
             }
         }
+        // If order_status not found, add at the end before actions
+        if (!isset($new_columns['customer_tag'])) {
+            $actions = isset($new_columns['wc_actions']) ? $new_columns['wc_actions'] : null;
+            unset($new_columns['wc_actions']);
+            $new_columns['customer_tag'] = 'কাস্টমার ট্যাগ';
+            if ($actions) {
+                $new_columns['wc_actions'] = $actions;
+            }
+        }
         return $new_columns;
+    }
+    
+    /**
+     * Make customer tag column sortable
+     */
+    public function make_customer_tag_sortable($columns) {
+        $columns['customer_tag'] = 'customer_tag';
+        return $columns;
     }
     
     /**
@@ -263,12 +290,110 @@ class VIP_User_Order {
      */
     public function display_customer_tag_column_hpos($column, $order) {
         if ($column === 'customer_tag') {
+            // Handle both order object and order ID
             if (is_numeric($order)) {
                 $order = wc_get_order($order);
+            } elseif (is_a($order, 'WC_Order')) {
+                // Already an order object
+            } else {
+                return;
             }
+            
             if ($order) {
                 echo $this->get_customer_tag_html($order);
             }
+        }
+    }
+    
+    /**
+     * Add meta box to order edit page
+     */
+    public function add_order_meta_box() {
+        $screen = class_exists('Automattic\WooCommerce\Utilities\OrderUtil') && 
+                  \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() 
+                  ? wc_get_page_screen_id('shop-order') 
+                  : 'shop_order';
+        
+        add_meta_box(
+            'vip_customer_tag_meta_box',
+            'কাস্টমার ট্যাগ',
+            array($this, 'render_order_meta_box'),
+            $screen,
+            'side',
+            'high'
+        );
+    }
+    
+    /**
+     * Render order meta box
+     */
+    public function render_order_meta_box($post_or_order) {
+        // Get order object
+        $order = $post_or_order instanceof WP_Post ? wc_get_order($post_or_order->ID) : $post_or_order;
+        
+        if (!$order) {
+            return;
+        }
+        
+        $billing_phone = $order->get_billing_phone();
+        
+        if (empty($billing_phone)) {
+            echo '<p style="color: #999;">ফোন নাম্বার পাওয়া যায়নি</p>';
+            return;
+        }
+        
+        $phone = $this->clean_phone_number($billing_phone);
+        $order_count = $this->count_orders_by_phone($phone);
+        $tag = $this->get_tag_for_order_count($order_count);
+        
+        echo '<div style="padding: 10px;">';
+        echo '<p><strong>ফোন নাম্বার:</strong> ' . esc_html($billing_phone) . '</p>';
+        echo '<p><strong>মোট অর্ডার:</strong> ' . esc_html($order_count) . 'টি</p>';
+        
+        if ($tag) {
+            echo '<p><strong>স্ট্যাটাস:</strong></p>';
+            echo '<div style="margin-top: 10px;">';
+            echo sprintf(
+                '<span class="vip-customer-tag" style="background-color: %s; color: #fff; padding: 8px 15px; border-radius: 4px; font-size: 13px; font-weight: 600; display: inline-block;">%s</span>',
+                esc_attr($tag['color']),
+                esc_html($tag['label'])
+            );
+            echo '</div>';
+        } else {
+            echo '<p style="color: #999;">কোনো ট্যাগ পাওয়া যায়নি</p>';
+        }
+        
+        echo '</div>';
+    }
+    
+    /**
+     * Display customer tag on order page (for HPOS)
+     */
+    public function display_customer_tag_on_order_page($order) {
+        if (!$order) {
+            return;
+        }
+        
+        $billing_phone = $order->get_billing_phone();
+        
+        if (empty($billing_phone)) {
+            return;
+        }
+        
+        $phone = $this->clean_phone_number($billing_phone);
+        $order_count = $this->count_orders_by_phone($phone);
+        $tag = $this->get_tag_for_order_count($order_count);
+        
+        if ($tag) {
+            echo '<div class="vip-customer-tag-box" style="margin-top: 15px; padding: 12px; background: #f8f9fa; border-left: 4px solid ' . esc_attr($tag['color']) . '; border-radius: 4px;">';
+            echo '<h4 style="margin: 0 0 10px 0; font-size: 14px;">কাস্টমার ট্যাগ</h4>';
+            echo '<p style="margin: 0 0 8px 0;"><strong>মোট অর্ডার:</strong> ' . esc_html($order_count) . 'টি</p>';
+            echo sprintf(
+                '<span class="vip-customer-tag" style="background-color: %s; color: #fff; padding: 6px 12px; border-radius: 3px; font-size: 12px; font-weight: 600; display: inline-block;">%s</span>',
+                esc_attr($tag['color']),
+                esc_html($tag['label'])
+            );
+            echo '</div>';
         }
     }
     
@@ -324,18 +449,23 @@ class VIP_User_Order {
     private function count_orders_by_phone($phone) {
         global $wpdb;
         
+        if (empty($phone)) {
+            return 0;
+        }
+        
         // Check if HPOS is enabled
         if (class_exists('Automattic\WooCommerce\Utilities\OrderUtil') && 
             \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled()) {
             
-            // HPOS query
+            // HPOS query - check for completed, processing, on-hold orders
             $count = $wpdb->get_var($wpdb->prepare(
                 "SELECT COUNT(DISTINCT o.id) 
                 FROM {$wpdb->prefix}wc_orders o
-                JOIN {$wpdb->prefix}wc_orders_meta om ON o.id = om.order_id
+                INNER JOIN {$wpdb->prefix}wc_orders_meta om ON o.id = om.order_id
                 WHERE om.meta_key = '_billing_phone'
-                AND REPLACE(REPLACE(REPLACE(REPLACE(om.meta_value, ' ', ''), '-', ''), '+88', ''), '+', '') LIKE %s
-                AND o.status NOT IN ('trash', 'draft', 'auto-draft')",
+                AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(om.meta_value, ' ', ''), '-', ''), '+88', ''), '+', ''), '০', '0') LIKE %s
+                AND o.type = 'shop_order'
+                AND o.status IN ('wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending')",
                 '%' . $wpdb->esc_like($phone) . '%'
             ));
         } else {
@@ -343,11 +473,11 @@ class VIP_User_Order {
             $count = $wpdb->get_var($wpdb->prepare(
                 "SELECT COUNT(DISTINCT p.ID) 
                 FROM {$wpdb->posts} p
-                JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+                INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
                 WHERE p.post_type = 'shop_order'
-                AND p.post_status NOT IN ('trash', 'draft', 'auto-draft')
+                AND p.post_status IN ('wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending')
                 AND pm.meta_key = '_billing_phone'
-                AND REPLACE(REPLACE(REPLACE(REPLACE(pm.meta_value, ' ', ''), '-', ''), '+88', ''), '+', '') LIKE %s",
+                AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(pm.meta_value, ' ', ''), '-', ''), '+88', ''), '+', ''), '০', '0') LIKE %s",
                 '%' . $wpdb->esc_like($phone) . '%'
             ));
         }
@@ -382,7 +512,23 @@ class VIP_User_Order {
      * Enqueue admin styles
      */
     public function enqueue_admin_styles($hook) {
-        if ($hook === 'edit.php' || $hook === 'woocommerce_page_wc-orders') {
+        // Load on order list and edit pages
+        $order_screens = array('edit.php', 'post.php', 'post-new.php', 'woocommerce_page_wc-orders', 'shop_order');
+        
+        $load_assets = false;
+        foreach ($order_screens as $screen) {
+            if (strpos($hook, $screen) !== false) {
+                $load_assets = true;
+                break;
+            }
+        }
+        
+        // Also check if we're on order edit page
+        if (isset($_GET['post']) && get_post_type($_GET['post']) === 'shop_order') {
+            $load_assets = true;
+        }
+        
+        if ($load_assets) {
             wp_enqueue_style(
                 'vip-user-order-admin',
                 VIP_USER_ORDER_PLUGIN_URL . 'assets/css/admin.css',
