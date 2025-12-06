@@ -51,6 +51,12 @@ class VIP_User_Order {
         add_action('manage_shop_order_posts_custom_column', array($this, 'display_customer_tag_column'), 20, 2);
         add_action('manage_woocommerce_page_wc-orders_custom_column', array($this, 'display_customer_tag_column_hpos'), 20, 2);
         
+        // Add meta box to order edit page
+        add_action('add_meta_boxes', array($this, 'add_order_meta_box'));
+        
+        // For HPOS order edit page
+        add_action('woocommerce_admin_order_data_after_billing_address', array($this, 'display_customer_tag_on_order_page'), 10, 1);
+        
         // Enqueue styles
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_styles'));
     }
@@ -301,6 +307,89 @@ class VIP_User_Order {
         }
         
         return '<span style="color: #999;">—</span>';
+    }
+    
+    public function add_order_meta_box() {
+        $screen = class_exists('Automattic\WooCommerce\Utilities\OrderUtil') && 
+                  method_exists('Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled') &&
+                  Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() 
+                  ? wc_get_page_screen_id('shop-order') 
+                  : 'shop_order';
+        
+        add_meta_box(
+            'vip_customer_tag_meta_box',
+            'Customer Tag',
+            array($this, 'render_order_meta_box'),
+            $screen,
+            'side',
+            'high'
+        );
+    }
+    
+    public function render_order_meta_box($post_or_order) {
+        $order = $post_or_order instanceof WP_Post ? wc_get_order($post_or_order->ID) : $post_or_order;
+        
+        if (!$order) {
+            return;
+        }
+        
+        $billing_phone = $order->get_billing_phone();
+        
+        if (empty($billing_phone)) {
+            echo '<p style="color: #999;">No phone number found</p>';
+            return;
+        }
+        
+        $phone = $this->clean_phone_number($billing_phone);
+        $order_count = $this->count_orders_by_phone($billing_phone);
+        $tag = $this->get_tag_for_order_count($order_count);
+        
+        echo '<div style="padding: 10px;">';
+        echo '<p><strong>Phone Number:</strong> ' . esc_html($billing_phone) . '</p>';
+        echo '<p><strong>Total Orders:</strong> ' . esc_html($order_count) . '</p>';
+        
+        if ($tag) {
+            echo '<p><strong>Status:</strong></p>';
+            echo '<div style="margin-top: 10px;">';
+            echo sprintf(
+                '<span class="vip-customer-tag" style="background-color: %s; color: #fff; padding: 8px 15px; border-radius: 4px; font-size: 13px; font-weight: 600; display: inline-block;">%s</span>',
+                esc_attr($tag['color']),
+                esc_html($tag['label'])
+            );
+            echo '</div>';
+        } else {
+            echo '<p style="color: #999;">No tag found</p>';
+        }
+        
+        echo '</div>';
+    }
+    
+    public function display_customer_tag_on_order_page($order) {
+        if (!$order) {
+            return;
+        }
+        
+        $billing_phone = $order->get_billing_phone();
+        
+        if (empty($billing_phone)) {
+            return;
+        }
+        
+        $phone = $this->clean_phone_number($billing_phone);
+        $order_count = $this->count_orders_by_phone($billing_phone);
+        $tag = $this->get_tag_for_order_count($order_count);
+        
+        if ($tag) {
+            echo '<div class="vip-customer-tag-box" style="margin-top: 15px; padding: 12px; background: #f8f9fa; border-left: 4px solid ' . esc_attr($tag['color']) . '; border-radius: 4px;">';
+            echo '<h4 style="margin: 0 0 10px 0; font-size: 14px;">Customer Tag</h4>';
+            echo '<p style="margin: 0 0 8px 0;"><strong>Total Orders:</strong> ' . esc_html($order_count) . '</p>';
+            echo sprintf(
+                '<span class="vip-customer-tag" style="background-color: %s; color: #fff; padding: 6px 12px; border-radius: 3px; font-size: 12px; font-weight: 600; display: inline-block;">%s</span>',
+                esc_attr($tag['color']),
+                esc_html($tag['label'])
+            );
+            echo '</div>';
+        }
     }
     
     private function clean_phone_number($phone) {
