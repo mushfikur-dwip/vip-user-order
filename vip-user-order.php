@@ -355,11 +355,18 @@ class VIP_User_Order {
         
         $results = array();
         
-        // Check HPOS
+        // Check HPOS - safer method
         $hpos_enabled = false;
-        if (class_exists('Automattic\WooCommerce\Utilities\OrderUtil')) {
-            $hpos_enabled = method_exists('Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled') 
-                && Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
+        if (function_exists('wc_get_container')) {
+            try {
+                if (class_exists('Automattic\WooCommerce\Utilities\OrderUtil')) {
+                    if (method_exists('Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled')) {
+                        $hpos_enabled = Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
+                    }
+                }
+            } catch (Exception $e) {
+                $hpos_enabled = false;
+            }
         }
         
         if ($hpos_enabled) {
@@ -459,7 +466,20 @@ function vip_user_order_init() {
         return;
     }
     
-    VIP_User_Order::get_instance();
+    if (!function_exists('wc_get_order')) {
+        return;
+    }
+    
+    try {
+        VIP_User_Order::get_instance();
+    } catch (Exception $e) {
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('VIP User Order Error: ' . $e->getMessage());
+        }
+        add_action('admin_notices', function() use ($e) {
+            echo '<div class="notice notice-error"><p><strong>VIP User Order Error:</strong> ' . esc_html($e->getMessage()) . '</p></div>';
+        });
+    }
 }
 add_action('plugins_loaded', 'vip_user_order_init', 20);
 
@@ -469,12 +489,16 @@ function vip_user_order_clear_cache($order_id) {
         return;
     }
     
-    $order = wc_get_order($order_id);
-    if ($order) {
-        $phone = $order->get_billing_phone();
-        if (!empty($phone)) {
-            delete_transient('vip_order_count_' . md5($phone));
+    try {
+        $order = wc_get_order($order_id);
+        if ($order && method_exists($order, 'get_billing_phone')) {
+            $phone = $order->get_billing_phone();
+            if (!empty($phone)) {
+                delete_transient('vip_order_count_' . md5($phone));
+            }
         }
+    } catch (Exception $e) {
+        // Silently fail
     }
 }
 add_action('woocommerce_order_status_changed', 'vip_user_order_clear_cache', 10, 1);
